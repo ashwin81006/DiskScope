@@ -3,10 +3,43 @@
 #include <fstream>
 
 namespace fs = std::filesystem;
-std::string escape_json(const std::string& str) {
+
+Node scan_directory(const std::string& path)
+{
+    Node node;
+    node.name = fs::path(path).filename().string();
+    node.size = 0;
+
+    for (auto& entry : fs::directory_iterator(path))
+    {
+        try
+        {
+            if (entry.is_directory())
+            {
+                Node child = scan_directory(entry.path().string());
+                node.size += child.size;
+                node.children.push_back(child);
+            }
+            else
+            {
+                node.size += entry.file_size();
+            }
+        }
+        catch (...)
+        {
+            continue;
+        }
+    }
+
+    return node;
+}
+
+std::string escape_json(const std::string& str)
+{
     std::string result;
 
-    for (char c : str) {
+    for (char c : str)
+    {
         if (c == '\\')
             result += "\\\\";
         else
@@ -16,45 +49,38 @@ std::string escape_json(const std::string& str) {
     return result;
 }
 
-Node scan_directory(const std::string& path) {
+void write_json_node(std::ofstream& file, const Node& node, int indent = 0)
+{
+    std::string space(indent, ' ');
 
-    Node node;
-    node.name = path;
-    node.size = 0;
+    file << space << "{\n";
 
-    for (auto& entry : fs::directory_iterator(path)) {
+    file << space << "  \"name\": \"" << escape_json(node.name) << "\",\n";
+    file << space << "  \"size\": " << node.size;
 
-        try {
+    if (!node.children.empty())
+    {
+        file << ",\n";
+        file << space << "  \"children\": [\n";
 
-            if (entry.is_directory()) {
+        for (size_t i = 0; i < node.children.size(); ++i)
+        {
+            write_json_node(file, node.children[i], indent + 4);
 
-                Node child = scan_directory(entry.path().string());
-                node.size += child.size;
-                node.children.push_back(child);
-
-            } else {
-
-                auto size = entry.file_size();
-                node.size += size;
-
-            }
-
-        } catch (...) {
-            continue;
+            if (i < node.children.size() - 1)
+                file << ",\n";
         }
+
+        file << "\n" << space << "  ]";
     }
 
-    return node;
+    file << "\n" << space << "}";
 }
-
-void write_json(const Node& root) {
-
+void write_json(const Node& root)
+{
     std::ofstream file("output/scan_result.json");
 
-    file << "{\n";
-    file << "\"name\": \"" << escape_json(root.name) << "\",\n";
-    file << "\"size\": " << root.size << "\n";
-    file << "}\n";
+    write_json_node(file, root);
 
     file.close();
 }
