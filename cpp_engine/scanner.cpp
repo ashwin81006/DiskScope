@@ -4,6 +4,7 @@
 #include <iostream>
 #include <queue>
 #include <mutex>
+#include <algorithm>
 #include <thread>
 #include <chrono>
 #include <vector>
@@ -17,6 +18,14 @@ struct WorkItem
     std::wstring path;
     Node *node;
 };
+struct LargeFile
+{
+    std::string path;
+    uint64_t size;
+};
+
+std::vector<LargeFile> largest_files;
+std::mutex largest_mutex;
 std::queue<WorkItem> dir_queue;
 std::mutex queue_mutex;
 
@@ -173,7 +182,7 @@ void worker()
 
         dirs_scanned++;
 
-        if (dirs_scanned % 500 == 0)
+        if (dirs_scanned % 1000 == 0)
         {
             std::wcout
                 << L"\nScanning: "
@@ -211,6 +220,9 @@ void worker()
                 {
                     Node *child = new Node;
                     child->name = std::string(name.begin(), name.end());
+                    child->path = std::string(full.begin(), full.end());
+
+                    current_node->dir_count++; // ADD THIS
 
                     {
                         std::lock_guard<std::mutex> lock(queue_mutex);
@@ -247,9 +259,31 @@ void worker()
                     }
 
                     current_node->size += size;
+                    current_node->file_count++;
                     total_size += size;
-
                     files_scanned++;
+
+                    /* track largest files */
+                    {
+                        std::lock_guard<std::mutex> lock(largest_mutex);
+
+                        LargeFile lf;
+                        lf.path = std::string(full.begin(), full.end());
+                        lf.size = size;
+
+                        largest_files.push_back(lf);
+
+                        if (largest_files.size() > 200)
+                        {
+                            std::sort(largest_files.begin(), largest_files.end(),
+                                      [](const LargeFile &a, const LargeFile &b)
+                                      {
+                                          return a.size > b.size;
+                                      });
+
+                            largest_files.resize(100);
+                        }
+                    }
                 }
 
             } while (FindNextFileW(h, &data));
@@ -262,6 +296,17 @@ void worker()
 }
 
 /* Main scan */
+void sort_tree(Node *node)
+{
+    std::sort(node->children.begin(), node->children.end(),
+              [](Node *a, Node *b)
+              {
+                  return a->size > b->size;
+              });
+
+    for (Node *child : node->children)
+        sort_tree(child);
+}
 
 uint64_t compute_directory_sizes(Node *node)
 {
@@ -270,6 +315,8 @@ uint64_t compute_directory_sizes(Node *node)
     for (Node *child : node->children)
     {
         total += compute_directory_sizes(child);
+        node->file_count += child->file_count;
+        node->dir_count += child->dir_count;
     }
 
     node->size = total;
@@ -310,6 +357,7 @@ Node scan_directory_parallel(const std::string &root_path)
     for (auto &t : workers)
         t.join();
     compute_directory_sizes(&root);
+    sort_tree(&root);
     std::cout << "\n\nSCAN COMPLETE\n";
 
     std::cout << "Files scanned: " << files_scanned << "\n";
@@ -373,12 +421,44 @@ void write_node(std::ofstream &f, Node *node, int depth)
     f << "\n"
       << indent << "}";
 }
-
 void write_json(const Node &root)
 {
     std::ofstream file("output/scan_result.json");
 
-    write_node(file, const_cast<Node *>(&root), 0);
+    file << "{\n";
+
+    /* scan metadata */
+    file << "  \"scan_info\": {\n";
+    file << "    \"files\": " << files_scanned << ",\n";
+    file << "    \"dirs\": " << dirs_scanned << ",\n";
+    file << "    \"size\": " << total_size << "\n";
+    file << "  },\n";
+
+    /* tree */
+    file << "  \"tree\": ";
+    write_node(file, const_cast<Node*>(&root), 1);
+    file << ",\n";
+
+    /* largest files */
+    file << "  \"largest_files\": [\n";
+
+    for (size_t i = 0; i < largest_files.size(); i++)
+    {
+        file << "    {\"path\": \""
+             << escape_json(largest_files[i].path)
+             << "\", \"size\": "
+             << largest_files[i].size
+             << "}";
+
+        if (i + 1 < largest_files.size())
+            file << ",";
+
+        file << "\n";
+    }
+
+    file << "  ]\n";
+
+    file << "}\n";
 
     file.close();
 }
