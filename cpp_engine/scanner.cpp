@@ -12,7 +12,12 @@
 #include <sstream>
 #include <fstream>
 
-std::queue<std::wstring> dir_queue;
+struct WorkItem
+{
+    std::wstring path;
+    Node *node;
+};
+std::queue<WorkItem> dir_queue;
 std::mutex queue_mutex;
 
 std::unordered_set<uint64_t> visited_files;
@@ -142,7 +147,7 @@ void worker()
 {
     while (true)
     {
-        std::wstring dir;
+        WorkItem item;
 
         {
             std::unique_lock<std::mutex> lock(queue_mutex);
@@ -150,19 +155,21 @@ void worker()
             if (dir_queue.empty())
             {
                 if (active_workers == 0)
-                {
                     return;
-                }
 
                 lock.unlock();
                 std::this_thread::yield();
                 continue;
             }
-            dir = dir_queue.front();
+
+            item = dir_queue.front();
             dir_queue.pop();
 
             active_workers++;
         }
+
+        std::wstring dir = item.path;
+        Node *current_node = item.node;
 
         dirs_scanned++;
 
@@ -184,35 +191,32 @@ void worker()
 
         WIN32_FIND_DATAW data;
 
-        HANDLE h = FindFirstFileW(
-            search.c_str(),
-            &data);
+        HANDLE h = FindFirstFileW(search.c_str(), &data);
 
         if (h != INVALID_HANDLE_VALUE)
         {
             do
             {
-                std::wstring name =
-                    data.cFileName;
+                std::wstring name = data.cFileName;
 
-                if (name == L"." ||
-                    name == L"..")
+                if (name == L"." || name == L"..")
                     continue;
 
-                std::wstring full =
-                    dir + L"\\" + name;
+                std::wstring full = dir + L"\\" + name;
 
-                if (data.dwFileAttributes &
-                    FILE_ATTRIBUTE_REPARSE_POINT)
+                if (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
                     continue;
 
-                if (data.dwFileAttributes &
-                    FILE_ATTRIBUTE_DIRECTORY)
+                if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    std::lock_guard<std::mutex>
-                        lock(queue_mutex);
+                    Node *child = new Node;
+                    child->name = std::string(name.begin(), name.end());
 
-                    dir_queue.push(full);
+                    {
+                        std::lock_guard<std::mutex> lock(queue_mutex);
+                        current_node->children.push_back(child);
+                        dir_queue.push({full, child});
+                    }
                 }
                 else
                 {
@@ -232,7 +236,6 @@ void worker()
 
                     uint64_t size;
 
-                    /* if compressed or sparse → use NTFS allocated size */
                     if (data.dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED ||
                         data.dwFileAttributes & FILE_ATTRIBUTE_SPARSE_FILE)
                     {
@@ -243,7 +246,7 @@ void worker()
                         size = align_cluster(logical_size);
                     }
 
-
+                    current_node->size += size;
                     total_size += size;
 
                     files_scanned++;
@@ -259,6 +262,19 @@ void worker()
 }
 
 /* Main scan */
+
+uint64_t compute_directory_sizes(Node *node)
+{
+    uint64_t total = node->size;
+
+    for (Node *child : node->children)
+    {
+        total += compute_directory_sizes(child);
+    }
+
+    node->size = total;
+    return total;
+}
 
 Node scan_directory_parallel(const std::string &root_path)
 {
@@ -280,7 +296,7 @@ Node scan_directory_parallel(const std::string &root_path)
         std::lock_guard<std::mutex>
             lock(queue_mutex);
 
-        dir_queue.push(root_w);
+        dir_queue.push({root_w, &root});
     }
 
     int threads =
@@ -293,9 +309,7 @@ Node scan_directory_parallel(const std::string &root_path)
 
     for (auto &t : workers)
         t.join();
-
-    root.size = total_size;
-
+    compute_directory_sizes(&root);
     std::cout << "\n\nSCAN COMPLETE\n";
 
     std::cout << "Files scanned: " << files_scanned << "\n";
@@ -314,14 +328,57 @@ Node scan_directory_parallel(const std::string &root_path)
 
 /* JSON */
 
+std::string escape_json(const std::string &s)
+{
+    std::string out;
+
+    for (char c : s)
+    {
+        if (c == '\\')
+            out += "\\\\";
+        else if (c == '"')
+            out += "\\\"";
+        else
+            out += c;
+    }
+
+    return out;
+}
+
+void write_node(std::ofstream &f, Node *node, int depth)
+{
+    std::string indent(depth * 2, ' ');
+
+    f << indent << "{\n";
+    f << indent << "  \"name\": \"" << escape_json(node->name) << "\",\n";
+    f << indent << "  \"size\": " << node->size;
+
+    if (!node->children.empty())
+    {
+        f << ",\n";
+        f << indent << "  \"children\": [\n";
+
+        for (size_t i = 0; i < node->children.size(); i++)
+        {
+            write_node(f, node->children[i], depth + 2);
+
+            if (i + 1 < node->children.size())
+                f << ",\n";
+        }
+
+        f << "\n"
+          << indent << "  ]";
+    }
+
+    f << "\n"
+      << indent << "}";
+}
+
 void write_json(const Node &root)
 {
     std::ofstream file("output/scan_result.json");
 
-    file << "{\n";
-    file << "  \"name\": \"" << root.name << "\",\n";
-    file << "  \"size\": " << root.size << "\n";
-    file << "}\n";
+    write_node(file, const_cast<Node *>(&root), 0);
 
     file.close();
 }

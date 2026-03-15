@@ -3,7 +3,6 @@
 #include <string>
 #include <cstdint>
 #include <vector>
-
 struct Node
 {
     std::string name;
