@@ -1,14 +1,12 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <cstdint>
 
 struct Node
 {
     std::string name;
-    uintmax_t size;
-    std::vector<Node> children;
+    uint64_t size;
 };
 
 Node scan_directory_parallel(const std::string& path);

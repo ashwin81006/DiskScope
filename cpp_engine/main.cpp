@@ -1,32 +1,25 @@
 #include <iostream>
-#include <conio.h>
 #include "scanner.h"
-
-using namespace std;
-
-extern void enable_privilege();
-
-int main(int argc, char* argv[])
+#include <conio.h>
+int main(int argc,char* argv[])
 {
     if(argc < 2)
     {
-        cout << "Usage: scanner <path>\n";
+        std::cout<<"Usage: scanner <path>\n";
         return 1;
     }
 
-    enable_privilege();
+    std::string path = argv[1];
 
-    string path = argv[1];
-
-    cout << "Scanning: " << path << endl;
+    std::cout<<"Scanning: "<<path<<"\n";
 
     Node root = scan_directory_parallel(path);
 
-    cout << "Total size: " << root.size << " bytes\n";
+    std::cout<<"Total size: "<<root.size<<" bytes\n";
 
     write_json(root);
 
-    cout << "Scan complete. Output written to output/scan_result.json\n";
+    std::cout<<"JSON written\n";
     getch();
     return 0;
 }
