@@ -20,6 +20,5 @@ int main(int argc,char* argv[])
     write_json(root);
 
     std::cout<<"JSON written\n";
-    getch();
     return 0;
 }
