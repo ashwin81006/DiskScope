@@ -423,6 +423,7 @@ void write_json(const Node &root)
     file << "}\n";
 
     file.close();
+    
 
     std::remove("output/scan_result.json");
     std::rename("output/scan_result.tmp", "output/scan_result.json");

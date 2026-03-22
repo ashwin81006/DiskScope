@@ -3,9 +3,10 @@ from PyQt6.QtWidgets import (
     QPushButton, QTreeView, QTableView, QProgressBar,
     QFileDialog, QFileIconProvider, QLabel, QHeaderView
 )
+from PyQt6.QtWidgets import QTabWidget, QVBoxLayout, QWidget, QSplitter
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QColor
 from PyQt6.QtCore import QFileInfo, Qt
-
+from PyQt6.QtWidgets import QTabWidget,QSizePolicy
 from controllers.scan_controller import ScanController
 import os
 import datetime
@@ -25,6 +26,33 @@ class MainWindow(QMainWindow):
         self._setup_ui()
 
     # ================= UI ================= #
+    
+    def load_top_files(self):
+        self.top_files_model.removeRows(0, self.top_files_model.rowCount())
+
+        sorted_files = sorted(
+            self.top_files_data,
+            key=lambda x: x.get("size", 0),
+            reverse=True
+        )[:50]  # top 50
+
+        for f in sorted_files:
+            path = f.get("path", "")
+            size = f.get("size", 0)
+
+            name = os.path.basename(path)
+
+            name_item = QStandardItem(name)
+            size_item = QStandardItem(self.format_size(size))
+            path_item = QStandardItem(path)
+
+            size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+
+            self.top_files_model.appendRow([
+                name_item,
+                size_item,
+                path_item
+            ])
     def _setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -70,7 +98,6 @@ class MainWindow(QMainWindow):
         # Make Name column wider
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.table.setColumnWidth(0, 350)
-
         self.tree.setIndentation(14)
         self.tree.setColumnWidth(0, 400)
 
@@ -88,12 +115,84 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.btn_select)
         top_bar.addWidget(self.progress)
         top_bar.addWidget(self.stats)
+        # 🔥 CREATE TABS
+        # 🔥 CREATE TABS
+        self.tabs = QTabWidget()
+        self.tabs.setContentsMargins(0, 0, 0, 0)
+        self.tabs.setStyleSheet("""
+        QTabBar::tab {
+            padding: 6px 14px;
+            background: #2b2b2b;
+            border: 1px solid #444;
+        }
+        QTabBar::tab:selected {
+            background: #3c3c3c;
+        }
+        """)
+        # DETAILS TAB
+        self.details_tab = QWidget()
+        details_layout = QVBoxLayout()
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(0)
 
-        content.addWidget(self.tree, 2)
-        content.addWidget(self.table, 3)
+        details_layout.addWidget(self.table)
+        self.details_tab.setLayout(details_layout)
 
-        main_layout.addLayout(top_bar)
-        main_layout.addLayout(content)
+        # TOP FILES TAB
+        self.top_files_tab = QWidget()
+        top_layout = QVBoxLayout()
+        top_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.top_files_table = QTableView()
+
+        self.top_files_model = QStandardItemModel()
+        self.top_files_model.setHorizontalHeaderLabels(["Name", "Size", "Path"])
+
+        self.top_files_table.setModel(self.top_files_model)
+
+        self.top_files_table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        self.top_files_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+
+        top_layout.addWidget(self.top_files_table)
+        self.top_files_tab.setLayout(top_layout)
+
+        # CHART TAB
+        self.chart_tab = QWidget()
+        chart_layout = QVBoxLayout()
+        chart_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.chart_label = QLabel("Chart Coming Soon...")
+        self.chart_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        chart_layout.addWidget(self.chart_label)
+        self.chart_tab.setLayout(chart_layout)
+
+        # ADD TABS
+        self.tabs.addTab(self.details_tab, "Details")
+        self.tabs.addTab(self.top_files_tab, "Top Files")
+        self.tabs.addTab(self.chart_tab, "Chart")
+        content.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        # 🔥 MAKE TABS EXPAND PROPERLY
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.tree)
+        splitter.addWidget(self.tabs)
+        splitter.setStretchFactor(0, 3)  # tree
+        splitter.setStretchFactor(1, 5)  # right panel
+        splitter.setHandleWidth(3)
+        
+        # 🔥 Proper proportions
+        splitter.setSizes([400, 800])
+
+        content.addWidget(splitter)
+
+        main_layout.addLayout(top_bar,0)
+
+        # 🔥 CRITICAL FIX
+        container = QWidget()
+        container.setLayout(content)
+
+        main_layout.addWidget(container,1)
 
         central.setLayout(main_layout)
 
@@ -147,7 +246,7 @@ class MainWindow(QMainWindow):
 
     def load_data(self, data):
         self.tree_model.removeRows(0, self.tree_model.rowCount())
-
+        self.top_files_data = data.get("largest_files", [])
         root = data.get("tree", {})
         self.tree_model.appendRow(self._build_tree(root))
 
@@ -158,7 +257,7 @@ class MainWindow(QMainWindow):
             f"Folders: {info.get('dirs',0)}   "
             f"Files: {info.get('files',0)}"
         )
-
+        self.load_top_files()
     # ================= TREE ================= #
     def _build_tree(self, node):
         name = QStandardItem(node.get("name", ""))
