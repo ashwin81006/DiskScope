@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <iomanip>
 #include <vector>
 #include <atomic>
 #include <unordered_set>
@@ -202,7 +203,7 @@ void worker()
                                data.nFileSizeLow;
                     }
 
-                    //node->size += size;
+                    // node->size += size;
                     node->file_count++;
                     total_size += size;
                     files_scanned++;
@@ -324,12 +325,10 @@ Node scan_directory_parallel(const std::string &root_path)
 }
 
 /* ---------- JSON ---------- */
-
 std::string escape_json(const std::string &s)
 {
     std::ostringstream o;
-
-    for (auto c : s)
+    for (unsigned char c : s)
     {
         switch (c)
         {
@@ -348,11 +347,23 @@ std::string escape_json(const std::string &s)
         case '\t':
             o << "\\t";
             break;
+        case '\f':
+            o << "\\f";
+            break; // form feed
+        case '\b':
+            o << "\\b";
+            break; // backspace
         default:
-            o << c;
+            if (c < 0x20) // any other control character
+            {
+                o << "\\u00" << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+            }
+            else
+            {
+                o << c;
+            }
         }
     }
-
     return o.str();
 }
 
@@ -423,7 +434,6 @@ void write_json(const Node &root)
     file << "}\n";
 
     file.close();
-    
 
     std::remove("output/scan_result.json");
     std::rename("output/scan_result.tmp", "output/scan_result.json");

@@ -1,17 +1,21 @@
-# Python
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
 
-# Build files
-*.o
-*.exe
-
-# Output data
+# Output (generated scan results)
 output/
+
+# Build / binaries
+*.exe
+*.o
+*.dll
 
 # VS Code
 .vscode/
 
-# OS files
+# OS junk
 .DS_Store
 Thumbs.db
+
+# Matplotlib cache
+.matplotlib/
