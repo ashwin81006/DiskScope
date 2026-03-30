@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QFileIconProvider, QLabel, QHeaderView,
     QTabWidget, QSplitter, QApplication, QGraphicsBlurEffect,
     QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QFrame,
-    QMessageBox
+    QMessageBox,QLineEdit, QMenu, QInputDialog, QComboBox
 )
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QFont, QColor, QLinearGradient, QBrush, QPalette
 from PyQt6.QtCore import QFileInfo, Qt, QTimer, QSize, QPropertyAnimation, QEasingCurve, pyqtProperty
@@ -15,6 +15,7 @@ import traceback
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.patches as mpatches
+import shutil
 
 class AnimatedButton(QPushButton):
     """Custom button with hover animations"""
@@ -253,11 +254,14 @@ class MainWindow(QMainWindow):
 
         self.icon_provider = QFileIconProvider()
         self.controller = ScanController(self)
-
+        self.icon_cache = {}
         self.last_progress = 0
         self.top_files_data = []
         self.details_tabs = {}  # Store details tabs to avoid duplicates
         self.path_map = {}  # Initialize path_map
+        
+        self.nav_history = []
+        self.nav_index = -1
 
         # For batch loading
         self._batch_timer = None
@@ -506,48 +510,38 @@ class MainWindow(QMainWindow):
         # Top bar
         top_bar = QHBoxLayout()
         top_bar.setSpacing(15)
-        
-        # Logo/Title
+
+        # LEFT: Title
         title_label = QLabel("DISC SCOPE")
         title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("""
-            color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #4caf50, stop:0.5 #2196f3, stop:1 #9c27b0);
-            padding: 5px;
-        """)
-        
-        self.btn_select = AnimatedButton("SELECT FOLDER")
-        self.btn_select.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #2d2d30, stop:0.5 #3e3e42, stop:1 #2d2d30);
-                border: 1px solid rgba(0, 120, 215, 0.5);
-                border-radius: 8px;
-                padding: 10px 24px;
-                font-weight: bold;
-                font-size: 14px;
+        title_label.setStyleSheet("color: #4caf50; padding: 5px;")
+
+        # SEARCH BAR (NEXT TO TITLE)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search files and folders...")
+        self.search.setFixedWidth(350)
+        self.search.setStyleSheet("""
+            QLineEdit {
+                background-color: #2d2d30;
+                border: 1px solid #444;
+                border-radius: 6px;
+                padding: 6px;
             }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #3e3e42, stop:0.5 #4e4e52, stop:1 #3e3e42);
+            QLineEdit:focus {
                 border: 1px solid #0078d7;
             }
         """)
-        
+        self.search.textChanged.connect(self.perform_search)
+
+        # RIGHT SIDE
+        self.btn_select = AnimatedButton("SELECT FOLDER")
         self.progress = ModernProgressBar()
-        self.stats = QLabel("Ready to analyze")
-        self.stats.setStyleSheet("""
-            QLabel {
-                color: #888;
-                font-size: 12px;
-                padding: 5px 12px;
-                background: #2d2d30;
-                border-radius: 6px;
-            }
-        """)
-        
+        self.stats = QLabel("Ready")
+
+        # ADD TO LAYOUT
         top_bar.addWidget(title_label)
+        top_bar.addWidget(self.search)
         top_bar.addStretch()
         top_bar.addWidget(self.btn_select)
         top_bar.addWidget(self.progress)
@@ -579,6 +573,8 @@ class MainWindow(QMainWindow):
             }
         """)
         
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.open_context_menu)
         # Table view with solid background
         self.table = QTableView()
         self.table.setStyleSheet("""
@@ -600,6 +596,8 @@ class MainWindow(QMainWindow):
                 color: white;
             }
         """)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.open_context_menu)
         
         # Models
         self.tree_model = QStandardItemModel()
@@ -634,6 +632,13 @@ class MainWindow(QMainWindow):
         self.tree.clicked.connect(self.on_tree_click)
         self.tree.expanded.connect(self.on_tree_expand)
         self.table.doubleClicked.connect(self.on_table_double_click)
+        from PyQt6.QtWidgets import QComboBox
+
+        self.filter_box = QComboBox()
+        self.filter_box.addItems(["All", "Files", "Folders", ">100MB"])
+        self.filter_box.currentTextChanged.connect(self.apply_filter)
+
+
         
         # Tabs with modern styling
         self.tabs = QTabWidget()
@@ -788,6 +793,37 @@ class MainWindow(QMainWindow):
             }
         """)
         
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+
+        def make_btn(text, func):
+            btn = QPushButton(text)
+            btn.setFixedHeight(32)
+            btn.clicked.connect(func)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #2d2d30;
+                    border: 1px solid #444;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                }
+                QPushButton:hover {
+                    background-color: #3e3e42;
+                    border: 1px solid #0078d7;
+                }
+            """)
+            return btn
+
+        toolbar.addWidget(make_btn("Open", lambda: self.context_action("open")))
+        toolbar.addWidget(make_btn("Delete", lambda: self.context_action("delete")))
+        toolbar.addWidget(make_btn("Rename", lambda: self.context_action("rename")))
+        toolbar.addWidget(make_btn("Copy Path", lambda: self.context_action("copy")))
+        toolbar.addWidget(make_btn("Refresh", self.refresh_view))
+        toolbar.addWidget(self.filter_box)
+        toolbar.addStretch()
+        toolbar.addWidget(make_btn("⬅", self.go_back))
+        toolbar.addWidget(make_btn("➡", self.go_forward))
+        
         self.figure = Figure(figsize=(8, 6), dpi=100, facecolor='#1e1e1e')
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setStyleSheet("background: transparent;")
@@ -836,8 +872,83 @@ class MainWindow(QMainWindow):
         
         content.addWidget(splitter)
         main_layout.addLayout(top_bar, 0)
+        main_layout.addLayout(toolbar,0)
         main_layout.addLayout(content, 1)
         central.setLayout(main_layout)
+        
+    def open_file(self, path):
+        try:
+            if os.path.exists(path):
+                os.startfile(path)
+        except Exception as e:
+            print("Open error:", e)
+    
+    def get_selected_node(self):
+        index = self.tree.currentIndex() if self.tree.hasFocus() else self.table.currentIndex()
+        item = self.tree_model.itemFromIndex(index) if self.tree.hasFocus() else self.table_model.itemFromIndex(index)
+
+        if item:
+            return item.data()
+        return None
+    def context_action(self, action):
+        node = self.get_selected_node()
+        if not node:
+            return
+
+        path = node.get("path", "")
+
+        if action == "open":
+            self.open_file(path)
+
+        elif action == "delete":
+            self.delete_item(path)
+
+        elif action == "rename":
+            self.rename_item(path)
+
+        elif action == "copy":
+            QApplication.clipboard().setText(path)
+    def rename_item(self, path):
+        new_name, ok = QInputDialog.getText(self, "Rename", "New name:")
+
+        if ok and new_name:
+            new_path = os.path.join(os.path.dirname(path), new_name)
+
+            try:
+                os.rename(path, new_path)
+
+                # 🔥 FIX: refresh UI
+                self.refresh_view()
+
+            except Exception as e:
+                print("Rename error:", e)
+
+    def refresh_view(self):
+        if hasattr(self, "full_data"):
+            root_path = self.full_data.get("path")
+            if root_path:
+                self.controller.start_scan(root_path)
+
+    def delete_item(self, path):
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Delete this?\n{path}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+
+                # 🔥 FIX: refresh UI
+                self.refresh_view()
+
+            except Exception as e:
+                print("Delete error:", e)
 
     def load_top_files(self):
         try:
@@ -884,7 +995,79 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error loading top files: {e}")
             traceback.print_exc()
+
+
+    def open_context_menu(self, position):
+        menu = QMenu()
+
+        open_action = menu.addAction("Open")
+        explorer_action = menu.addAction("Open in Explorer")
+        copy_path_action = menu.addAction("Copy Path")
+        rename_action = menu.addAction("Rename")
+        delete_action = menu.addAction("Delete")
+
+        action = menu.exec(self.sender().viewport().mapToGlobal(position))
+
+        index = self.tree.currentIndex() if self.tree.hasFocus() else self.table.currentIndex()
+        item = self.tree_model.itemFromIndex(index) if self.tree.hasFocus() else self.table_model.itemFromIndex(index)
+
+        if not item:
+            return
+
+        node = item.data()
+        if not node:
+            return
+
+        path = node.get("path", "")
+
+        if action == open_action:
+            self.open_file(path)
+
+        elif action == explorer_action:
+            os.startfile(os.path.dirname(path))
+
+        elif action == copy_path_action:
+            QApplication.clipboard().setText(path)
+
+        elif action == rename_action:
+            self.rename_item(path)
+
+        elif action == delete_action:
+            self.delete_item(path)
         
+    def perform_search(self, text):
+        text = text.lower().strip()
+
+        self.table_model.removeRows(0, self.table_model.rowCount())
+
+        if not text:
+            return
+
+        results = []
+
+        for path, node in self.path_map.items():
+            name = node.get("name", "").lower()
+            if text in name:
+                results.append(node)
+
+        # limit results for performance
+        results = results[:200]
+
+        for node in results:
+            is_folder = node.get("dirs", 0) > 0 or node.get("children")
+
+            name = QStandardItem(node.get("name", "Unknown"))
+            size = QStandardItem(self.format_size(node.get("size", 0)))
+            type_item = QStandardItem("Folder" if is_folder else "File")
+            files = QStandardItem(str(node.get("files", 0)))
+            dirs = QStandardItem(str(node.get("dirs", 0)))
+
+            name.setIcon(self.get_icon(node.get("path", ""), is_folder))
+
+            self.table_model.appendRow([
+                name, size, type_item, files, dirs,
+                QStandardItem("-"), QStandardItem("-")
+            ])
     def format_size(self, size):
         try:
             for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -907,16 +1090,34 @@ class MainWindow(QMainWindow):
     
     def get_icon(self, path, is_folder=True):
         try:
+            # ensure path is string
+            if isinstance(path, list):
+                path = path[0] if path else ""
+
+            path = str(path)
+
+            # 🔥 FIX: force boolean
+            is_folder = bool(is_folder)
+
+            key = (path, is_folder)
+
+            if key in self.icon_cache:
+                return self.icon_cache[key]
+
             if path and os.path.exists(path):
                 info = QFileInfo(os.path.abspath(path))
-                if info.exists():
-                    return self.icon_provider.icon(info)
-            return self.icon_provider.icon(
-                QFileIconProvider.IconType.Folder if is_folder else QFileIconProvider.IconType.File
-            )
-        except:
+                icon = self.icon_provider.icon(info)
+            else:
+                icon = self.icon_provider.icon(
+                    QFileIconProvider.IconType.Folder if is_folder else QFileIconProvider.IconType.File
+                )
+
+            self.icon_cache[key] = icon
+            return icon
+
+        except Exception as e:
+            print("Icon error:", e)
             return self.icon_provider.icon(QFileIconProvider.IconType.File)
-    
     def get_file_times(self, path):
         try:
             if path and os.path.exists(path):
@@ -970,7 +1171,8 @@ class MainWindow(QMainWindow):
             self.tree_model.removeRows(0, self.tree_model.rowCount())
             self.top_files_data = data.get("largest_files", [])
             root = data.get("tree", {})
-            
+            # expand ONLY root
+
             if not root:
                 print("No tree data found")
                 return
@@ -984,11 +1186,21 @@ class MainWindow(QMainWindow):
             root_item.setIcon(self.get_icon(root.get("path", ""), True))
             size_item = QStandardItem(self.format_size(root.get("size", 0)))
             self.tree_model.appendRow([root_item, size_item])
-            
-            if root.get("children"):
-                dummy = QStandardItem("Loading...")
-                root_item.appendRow([dummy, QStandardItem("")])
-            
+            self.tree.expand(self.tree_model.indexFromItem(root_item))
+            self.tree.expand(self.tree_model.indexFromItem(root_item))
+
+            # 🔥 SELECT ROOT
+            index = self.tree_model.indexFromItem(root_item)
+
+            self.tree.expand(index)
+            self.tree.setCurrentIndex(index)
+
+            # 🔥 FORCE LOAD CHILDREN (THIS FIXES "Loading...")
+            self.on_tree_expand(index)
+
+            # 🔥 ALSO LOAD RIGHT PANEL
+            self.load_children(root)
+
             info = data.get("scan_info", {})
             
             self.stats.setText(
@@ -1014,7 +1226,7 @@ class MainWindow(QMainWindow):
             
             if item.rowCount() > 0:
                 first_child = item.child(0, 0)
-                if first_child and first_child.text() == "Loading...":
+                if first_child and "Loading" in first_child.text():
                     item.removeRows(0, item.rowCount())
                 else:
                     return
@@ -1076,23 +1288,60 @@ class MainWindow(QMainWindow):
     
     def load_children(self, node):
         try:
+            path = node.get("path")
+
+            # 🔥 NAV TRACK (RIGHT PANEL BASED)
+            if self.nav_index == -1 or self.nav_history[self.nav_index] != path:
+                self.nav_history = self.nav_history[:self.nav_index + 1]
+                self.nav_history.append(path)
+                self.nav_index += 1
             self.table_model.removeRows(0, self.table_model.rowCount())
-            MAX_ITEMS = 500
-            
+
             real_node = self.path_map.get(node.get("path"))
             if not real_node:
                 return
-            
+
             children = real_node.get("children", [])
-            if len(children) > MAX_ITEMS:
-                print(f"[UI] Limiting children: {len(children)} → {MAX_ITEMS}")
-                children = children[:MAX_ITEMS]
+
+            # 🔥 EMPTY STATE
             if not children:
+                self.table_model.appendRow([
+                    QStandardItem("(Empty Folder)"),
+                    QStandardItem(""),
+                    QStandardItem(""),
+                    QStandardItem("0"),
+                    QStandardItem("0"),
+                    QStandardItem(""),
+                    QStandardItem("")
+                ])
                 return
-            self._batch_load_table_children(children)
+
+            filter_type = self.filter_box.currentText()
+
+            filtered = []
+
+            for child in children:
+                is_folder = child.get("dirs", 0) > 0 or child.get("children")
+                size = child.get("size", 0)
+
+                # 🔥 FILTER LOGIC
+                if filter_type == "Files" and is_folder:
+                    continue
+                if filter_type == "Folders" and not is_folder:
+                    continue
+                if filter_type == ">100MB" and size < 100 * 1024 * 1024:
+                    continue
+
+                filtered.append(child)
+
+            self._batch_load_table_children(filtered)
+
         except Exception as e:
-            print(f"Error loading children: {e}")
-    
+            print("Error loading children:", e)
+    def apply_filter(self):
+        index = self.tree.currentIndex()
+        if index.isValid():
+            self.on_tree_click(index)
     def _batch_load_table_children(self, children):
         try:
             self._batch_table_children = children
@@ -1109,48 +1358,68 @@ class MainWindow(QMainWindow):
         try:
             start = self._batch_table_index
             end = min(start + self._batch_size, len(self._batch_table_children))
+
             for i in range(start, end):
                 child = self._batch_table_children[i]
+
                 is_folder = child.get("dirs", 0) > 0 or child.get("children")
-                
+
+                path = child.get("path", "")
+
                 name = QStandardItem(child.get("name", "Unknown"))
                 name.setData(child)
+                name.setIcon(self.get_icon(path, is_folder))
+                name.setToolTip(path)
+
                 size = QStandardItem(self.format_size(child.get("size", 0)))
                 type_item = QStandardItem("Folder" if is_folder else "File")
                 files = QStandardItem(str(child.get("files", 0) if is_folder else 1))
                 dirs = QStandardItem(str(child.get("dirs", 0) if is_folder else 0))
-                modified, accessed = self.get_file_times(child.get("path", ""))
-                name.setIcon(self.get_icon(child.get("path", ""), is_folder))
-                
+
+                modified, accessed = self.get_file_times(path)
+
                 self.table_model.appendRow([
-                    name, size, type_item, files, dirs,
-                    QStandardItem(modified), QStandardItem(accessed)
+                    name,
+                    size,
+                    type_item,
+                    files,
+                    dirs,
+                    QStandardItem(modified),
+                    QStandardItem(accessed)
                 ])
-            
+
             self._batch_table_index = end
+
             if self._batch_table_index >= len(self._batch_table_children):
                 self._batch_table_timer.stop()
                 self._batch_table_children = None
+
         except Exception as e:
-            print(f"Error processing table batch: {e}")
-            if self._batch_table_timer:
-                self._batch_table_timer.stop()
+            print("Error batch table:", e)
     
     def on_tree_click(self, index):
         try:
             item = self.tree_model.itemFromIndex(index)
             node = item.data()
+
             if not node:
                 return
-            
+
+            path = node.get("path")
+
+
+
+            # FILE CLICK
             if node.get("dirs", 0) == 0 and node.get("files", 0) == 0:
                 self.table_model.removeRows(0, self.table_model.rowCount())
-                modified, accessed = self.get_file_times(node.get("path", ""))
-                
+
+                modified, accessed = self.get_file_times(path)
+
                 name = QStandardItem(node.get("name", "Unknown"))
                 name.setData(node)
-                name.setIcon(self.get_icon(node.get("path", ""), False))
-                
+                name.setIcon(self.get_icon(path, False))
+                name.setToolTip(path)
+
                 self.table_model.appendRow([
                     name,
                     QStandardItem(self.format_size(node.get("size", 0))),
@@ -1161,11 +1430,30 @@ class MainWindow(QMainWindow):
                     QStandardItem(accessed)
                 ])
                 return
-            
+
             QTimer.singleShot(0, lambda: self.load_children(node))
+
         except Exception as e:
-            print(f"Error on tree click: {e}")
-    
+            print("Error on tree click:", e)
+    def go_back(self):
+        if self.nav_index > 0:
+            self.nav_index -= 1
+            path = self.nav_history[self.nav_index]
+
+            node = self.path_map.get(path)
+            if node:
+                self.load_children(node)
+                self.expand_tree_to_path(path)
+
+    def go_forward(self):
+        if self.nav_index < len(self.nav_history) - 1:
+            self.nav_index += 1
+            path = self.nav_history[self.nav_index]
+
+            node = self.path_map.get(path)
+            if node:
+                self.load_children(node)
+                self.expand_tree_to_path(path)
     def expand_tree_to_path(self, target_path):
         try:
             def match(item):
