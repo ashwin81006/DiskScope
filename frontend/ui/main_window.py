@@ -89,9 +89,9 @@ class InteractiveChart:
             
             self.current_data = node
             
-            # Check if node has children
+            
             if not node or not node.get("children"):
-                # Show a message if no children
+                
                 ax.text(0.5, 0.5, "No data available\nClick on a folder in the tree", 
                        ha='center', va='center', color='white', fontsize=12, transform=ax.transAxes)
                 ax.axis('off')
@@ -106,7 +106,7 @@ class InteractiveChart:
                 self.canvas.draw()
                 return
             
-            # Sort by size
+            
             children = sorted(children, key=lambda x: x.get("size", 0), reverse=True)
             TOP_N = 6
             top = children[:TOP_N]
@@ -114,7 +114,7 @@ class InteractiveChart:
             
             self.labels = []
             self.sizes = []
-            self.node_data = []  # Store node data for each segment
+            self.node_data = []  
             
             for child in top:
                 self.labels.append(child.get("name", "Unknown"))
@@ -134,7 +134,7 @@ class InteractiveChart:
             
             colors = ["#4CAF50", "#2196F3", "#FFC107", "#E91E63", "#9C27B0", "#00BCD4", "#9E9E9E"]
             
-            # Create pie chart with clickable wedges
+            
             self.wedges, self.texts, self.autotexts = ax.pie(
                 self.sizes,
                 labels=self.labels,
@@ -145,27 +145,27 @@ class InteractiveChart:
                 wedgeprops={'edgecolor': '#1e1e1e', 'linewidth': 2}
             )
             
-            # Make wedges clickable
+            
             for i, wedge in enumerate(self.wedges):
                 wedge.set_picker(True)
                 wedge.set_pickradius(5)
-                # Store data in wedge for later use
+                
                 wedge.node_data = self.node_data[i] if i < len(self.node_data) else None
                 wedge.label_text = self.labels[i] if i < len(self.labels) else ""
                 wedge.index = i
             
-            # Connect click event (only once)
+            
             if not self.pick_connected:
                 self.canvas.mpl_connect('pick_event', self.on_pick)
                 self.pick_connected = True
             
-            # Style the percentage text
+            
             for autotext in self.autotexts:
                 autotext.set_color('white')
                 autotext.set_fontsize(10)
                 autotext.set_weight('bold')
             
-            # Add instruction text
+            
             ax.text(0.5, -0.1, "Click on any segment to see details", 
                    ha='center', va='center', color='#888', fontsize=9, transform=ax.transAxes)
             
@@ -186,14 +186,14 @@ class InteractiveChart:
             if not hasattr(wedge, 'node_data') or not wedge.node_data:
                 return
             
-            # Animate the wedge (expand effect)
+            
             self.animate_wedge(wedge)
             
-            # Show details in a new tab
+            
             node_data = wedge.node_data
             label = wedge.label_text
             
-            # Create a details tab
+            
             self.main_window.create_details_tab(label, node_data)
             
         except Exception as e:
@@ -203,18 +203,18 @@ class InteractiveChart:
     def animate_wedge(self, wedge):
         """Animate wedge expansion"""
         try:
-            # Store original properties
+            
             original_radius = wedge.get_radius()
             original_linewidth = wedge.get_linewidth()
             original_edgecolor = wedge.get_edgecolor()
             
-            # Temporarily expand the wedge
+            
             wedge.set_radius(original_radius + 0.05)
             wedge.set_linewidth(3)
             wedge.set_edgecolor('gold')
             self.canvas.draw_idle()
             
-            # Reset after animation
+            
             QTimer.singleShot(200, lambda: self.reset_wedge(wedge, original_radius, original_linewidth, original_edgecolor))
         except Exception as e:
             print(f"Error animating wedge: {e}")
@@ -232,17 +232,17 @@ class InteractiveChart:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DiscScope - Advanced Disk Analyzer")
+        self.setWindowTitle("DiskScope - Advanced Disk Analyzer")
         self.resize(1400, 800)
         
-        # Set solid background for main window
+        
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #181818;
             }
         """)
         
-        # Create central widget with solid background
+        
         central_widget = QWidget()
         central_widget.setObjectName("CentralWidget")
         central_widget.setStyleSheet("""
@@ -257,13 +257,13 @@ class MainWindow(QMainWindow):
         self.icon_cache = {}
         self.last_progress = 0
         self.top_files_data = []
-        self.details_tabs = {}  # Store details tabs to avoid duplicates
-        self.path_map = {}  # Initialize path_map
+        self.details_tabs = {}  
+        self.path_map = {}  
         
         self.nav_history = []
         self.nav_index = -1
 
-        # For batch loading
+        
         self._batch_timer = None
         self._batch_parent = None
         self._batch_children = None
@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         self._batch_table_children = None
         self._batch_table_index = 0
         
-        # Animation timers
+        
         self.glow_timer = QTimer()
         self.glow_value = 0
         self.glow_direction = 1
@@ -283,7 +283,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_animations()
         
-        # Initialize interactive chart
+        
         self.chart = None
 
     def _setup_animations(self):
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
             self.glow_value = 0.2
             self.glow_direction = 1
             
-        # Update button styles
+        
         if hasattr(self, 'btn_select') and self.btn_select:
             self.btn_select.setStyleSheet(f"""
                 QPushButton {{
@@ -324,15 +324,15 @@ class MainWindow(QMainWindow):
     def create_details_tab(self, title, node_data):
         """Create a new tab with details about the clicked segment"""
         try:
-            # Generate unique tab name
+            
             tab_name = f"{title}_Details"
             if tab_name in self.details_tabs:
-                # If tab already exists, just switch to it
+                
                 index = self.details_tabs[tab_name]
                 self.tabs.setCurrentIndex(index)
                 return
             
-            # Create new tab widget
+            
             details_tab = QWidget()
             details_tab.setStyleSheet("""
                 QWidget {
@@ -345,7 +345,7 @@ class MainWindow(QMainWindow):
             layout.setContentsMargins(10, 10, 10, 10)
             layout.setSpacing(10)
             
-            # Header with title and size
+            
             header_frame = QFrame()
             header_frame.setStyleSheet("""
                 QFrame {
@@ -368,7 +368,7 @@ class MainWindow(QMainWindow):
             header_frame.setLayout(header_layout)
             layout.addWidget(header_frame)
             
-            # Table for showing contents
+            
             table = QTableView()
             table.setStyleSheet("""
                 QTableView {
@@ -389,10 +389,10 @@ class MainWindow(QMainWindow):
                 }
             """)
             
-            # Create model for the table
+            
             model = QStandardItemModel()
             
-            # Populate data based on node type
+            
             if node_data.get("is_others") and node_data.get("children"):
                 model.setHorizontalHeaderLabels(["Name", "Size", "Type", "Files", "Folders"])
                 children = node_data.get("children", [])
@@ -439,12 +439,12 @@ class MainWindow(QMainWindow):
             
             table.setModel(model)
             
-            # Adjust column widths
+            
             table.setColumnWidth(0, 300)
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
             table.horizontalHeader().setStretchLastSection(True)
             
-            # Add close button
+            
             close_btn = QPushButton("Close Tab")
             close_btn.setStyleSheet("""
                 QPushButton {
@@ -459,7 +459,7 @@ class MainWindow(QMainWindow):
                 }
             """)
             
-            # Store tab info for closing
+            
             close_btn.clicked.connect(lambda: self.close_details_tab(tab_name))
             
             button_layout = QHBoxLayout()
@@ -470,11 +470,11 @@ class MainWindow(QMainWindow):
             layout.addLayout(button_layout)
             details_tab.setLayout(layout)
             
-            # Add the tab
+            
             index = self.tabs.addTab(details_tab, f"📊 {title}")
             self.tabs.setCurrentIndex(index)
             
-            # Store reference
+            
             self.details_tabs[tab_name] = index
             
         except Exception as e:
@@ -490,7 +490,7 @@ class MainWindow(QMainWindow):
                 self.tabs.removeTab(index)
                 del self.details_tabs[tab_name]
                 
-                # Update indices for remaining tabs
+                
                 new_dict = {}
                 for name, idx in self.details_tabs.items():
                     if idx > index:
@@ -507,17 +507,17 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
         
-        # Top bar
+        
         top_bar = QHBoxLayout()
         top_bar.setSpacing(15)
 
-        # LEFT: Title
-        title_label = QLabel("DISC SCOPE")
+        
+        title_label = QLabel("DISK SCOPE")
         title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
         title_label.setFont(title_font)
         title_label.setStyleSheet("color: #4caf50; padding: 5px;")
 
-        # SEARCH BAR (NEXT TO TITLE)
+        
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search files and folders...")
         self.search.setFixedWidth(350)
@@ -534,12 +534,12 @@ class MainWindow(QMainWindow):
         """)
         self.search.textChanged.connect(self.perform_search)
 
-        # RIGHT SIDE
+        
         self.btn_select = AnimatedButton("SELECT FOLDER")
         self.progress = ModernProgressBar()
         self.stats = QLabel("Ready")
 
-        # ADD TO LAYOUT
+        
         top_bar.addWidget(title_label)
         top_bar.addWidget(self.search)
         top_bar.addStretch()
@@ -547,11 +547,11 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.progress)
         top_bar.addWidget(self.stats)
         
-        # Content area
+        
         content = QHBoxLayout()
         content.setSpacing(15)
         
-        # Tree view with solid background
+        
         self.tree = QTreeView()
         self.tree.setStyleSheet("""
             QTreeView {
@@ -575,7 +575,7 @@ class MainWindow(QMainWindow):
         
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.open_context_menu)
-        # Table view with solid background
+        
         self.table = QTableView()
         self.table.setStyleSheet("""
             QTableView {
@@ -599,7 +599,7 @@ class MainWindow(QMainWindow):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.open_context_menu)
         
-        # Models
+        
         self.tree_model = QStandardItemModel()
         self.tree_model.setHorizontalHeaderLabels(["Name", "Size"])
         self.table_model = QStandardItemModel()
@@ -607,14 +607,14 @@ class MainWindow(QMainWindow):
             ["Name", "Size", "Type", "Files", "Folders", "Modified", "Accessed"]
         )
         
-        # Set header styling
+        
         for model in [self.tree_model, self.table_model]:
             model.setHeaderData(0, Qt.Orientation.Horizontal, QColor(200, 200, 200), Qt.ItemDataRole.ForegroundRole)
             
         self.tree.setModel(self.tree_model)
         self.table.setModel(self.table_model)
         
-        # UX improvements
+        
         self.tree.setEditTriggers(QTreeView.EditTrigger.NoEditTriggers)
         self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
@@ -622,12 +622,12 @@ class MainWindow(QMainWindow):
         self.table.setAlternatingRowColors(True)
         self.tree.setAlternatingRowColors(True)
         
-        # Set column widths
+        
         self.tree.setColumnWidth(0, 450)
         self.table.setColumnWidth(0, 350)
         self.table.horizontalHeader().setStretchLastSection(True)
         
-        # Signals
+        
         self.btn_select.clicked.connect(self.select_folder)
         self.tree.clicked.connect(self.on_tree_click)
         self.tree.expanded.connect(self.on_tree_expand)
@@ -640,7 +640,7 @@ class MainWindow(QMainWindow):
 
 
         
-        # Tabs with modern styling
+        
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -666,7 +666,7 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Details tab with glass effect
+        
         details_tab = QWidget()
         details_tab.setStyleSheet("""
             QWidget {
@@ -677,7 +677,7 @@ class MainWindow(QMainWindow):
         details_layout = QVBoxLayout()
         details_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Create glass container for table
+        
         glass_container = QFrame()
         glass_container.setStyleSheet("""
             QFrame {
@@ -694,7 +694,7 @@ class MainWindow(QMainWindow):
         details_layout.addWidget(glass_container)
         details_tab.setLayout(details_layout)
         
-        # Top Files tab with glass effect
+        
         top_files_tab = QWidget()
         top_files_tab.setStyleSheet("""
             QWidget {
@@ -705,7 +705,7 @@ class MainWindow(QMainWindow):
         top_layout = QVBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Add header for top files
+        
         top_header = QLabel("LARGEST FILES")
         top_header.setStyleSheet("""
             QLabel {
@@ -752,7 +752,7 @@ class MainWindow(QMainWindow):
         
         top_layout.addWidget(top_header)
         
-        # Create glass container for top files table
+        
         glass_container2 = QFrame()
         glass_container2.setStyleSheet("""
             QFrame {
@@ -769,7 +769,7 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(glass_container2)
         top_files_tab.setLayout(top_layout)
         
-        # Chart tab with interactive chart
+        
         chart_tab = QWidget()
         chart_tab.setStyleSheet("""
             QWidget {
@@ -828,7 +828,7 @@ class MainWindow(QMainWindow):
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setStyleSheet("background: transparent;")
         
-        # Create glass container for chart
+        
         glass_container3 = QFrame()
         glass_container3.setStyleSheet("""
             QFrame {
@@ -850,7 +850,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(top_files_tab, "TOP FILES")
         self.tabs.addTab(chart_tab, "CHART")
         
-        # Splitter with modern handle
+        
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.tree)
         splitter.addWidget(self.tabs)
@@ -917,7 +917,7 @@ class MainWindow(QMainWindow):
             try:
                 os.rename(path, new_path)
 
-                # 🔥 FIX: refresh UI
+                
                 self.refresh_view()
 
             except Exception as e:
@@ -944,7 +944,7 @@ class MainWindow(QMainWindow):
                 else:
                     os.remove(path)
 
-                # 🔥 FIX: refresh UI
+                
                 self.refresh_view()
 
             except Exception as e:
@@ -965,7 +965,7 @@ class MainWindow(QMainWindow):
                 size = f.get("size", 0)
                 name = os.path.basename(path) if path else "Unknown"
                 
-                # Add rank for top files
+                
                 rank = idx + 1
                 rank_text = f"#{rank}" if rank <= 3 else f"{rank}."
                 display_name = f"{rank_text} {name}"
@@ -980,13 +980,13 @@ class MainWindow(QMainWindow):
                 icon = self.get_icon(path, is_folder)
                 name_item.setData(icon, Qt.ItemDataRole.DecorationRole)
                 
-                # Color coding for top 3
+                
                 if rank == 1:
-                    name_item.setForeground(QColor(255, 215, 0))  # Gold
+                    name_item.setForeground(QColor(255, 215, 0))  
                 elif rank == 2:
-                    name_item.setForeground(QColor(192, 192, 192))  # Silver
+                    name_item.setForeground(QColor(192, 192, 192))  
                 elif rank == 3:
-                    name_item.setForeground(QColor(205, 127, 50))  # Bronze
+                    name_item.setForeground(QColor(205, 127, 50))  
                     
                 self.top_files_model.appendRow([name_item, size_item, path_item])
             
@@ -1050,7 +1050,7 @@ class MainWindow(QMainWindow):
             if text in name:
                 results.append(node)
 
-        # limit results for performance
+        
         results = results[:200]
 
         for node in results:
@@ -1090,13 +1090,13 @@ class MainWindow(QMainWindow):
     
     def get_icon(self, path, is_folder=True):
         try:
-            # ensure path is string
+            
             if isinstance(path, list):
                 path = path[0] if path else ""
 
             path = str(path)
 
-            # 🔥 FIX: force boolean
+            
             is_folder = bool(is_folder)
 
             key = (path, is_folder)
@@ -1171,7 +1171,7 @@ class MainWindow(QMainWindow):
             self.tree_model.removeRows(0, self.tree_model.rowCount())
             self.top_files_data = data.get("largest_files", [])
             root = data.get("tree", {})
-            # expand ONLY root
+            
 
             if not root:
                 print("No tree data found")
@@ -1189,16 +1189,16 @@ class MainWindow(QMainWindow):
             self.tree.expand(self.tree_model.indexFromItem(root_item))
             self.tree.expand(self.tree_model.indexFromItem(root_item))
 
-            # 🔥 SELECT ROOT
+            
             index = self.tree_model.indexFromItem(root_item)
 
             self.tree.expand(index)
             self.tree.setCurrentIndex(index)
 
-            # 🔥 FORCE LOAD CHILDREN (THIS FIXES "Loading...")
+            
             self.on_tree_expand(index)
 
-            # 🔥 ALSO LOAD RIGHT PANEL
+            
             self.load_children(root)
 
             info = data.get("scan_info", {})
@@ -1290,7 +1290,7 @@ class MainWindow(QMainWindow):
         try:
             path = node.get("path")
 
-            # 🔥 NAV TRACK (RIGHT PANEL BASED)
+            
             if self.nav_index == -1 or self.nav_history[self.nav_index] != path:
                 self.nav_history = self.nav_history[:self.nav_index + 1]
                 self.nav_history.append(path)
@@ -1303,7 +1303,7 @@ class MainWindow(QMainWindow):
 
             children = real_node.get("children", [])
 
-            # 🔥 EMPTY STATE
+            
             if not children:
                 self.table_model.appendRow([
                     QStandardItem("(Empty Folder)"),
@@ -1324,7 +1324,7 @@ class MainWindow(QMainWindow):
                 is_folder = child.get("dirs", 0) > 0 or child.get("children")
                 size = child.get("size", 0)
 
-                # 🔥 FILTER LOGIC
+                
                 if filter_type == "Files" and is_folder:
                     continue
                 if filter_type == "Folders" and not is_folder:
@@ -1409,7 +1409,7 @@ class MainWindow(QMainWindow):
 
 
 
-            # FILE CLICK
+            
             if node.get("dirs", 0) == 0 and node.get("files", 0) == 0:
                 self.table_model.removeRows(0, self.table_model.rowCount())
 

@@ -43,7 +43,7 @@ std::atomic<uint64_t> files_scanned(0);
 std::atomic<uint64_t> dirs_scanned(0);
 std::atomic<int> active_workers(0);
 
-/* ---------- UTIL ---------- */
+
 
 void detect_cluster_size(const std::wstring &root)
 {
@@ -119,7 +119,7 @@ uint64_t get_real_file_size(const std::wstring &path)
     return ((uint64_t)high << 32) | low;
 }
 
-/* ---------- WORKER ---------- */
+
 
 void worker()
 {
@@ -133,7 +133,7 @@ void worker()
             if (dir_queue.empty())
             {
                 if (active_workers == 0)
-                    break; // 🔥 BREAK instead of return
+                    break; 
 
                 lock.unlock();
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -196,19 +196,19 @@ void worker()
 
                     uint64_t size = get_real_file_size(full);
 
-                    // fallback if API fails
+                    
                     if (size == 0)
                     {
                         size = ((uint64_t)data.nFileSizeHigh << 32) |
                                data.nFileSizeLow;
                     }
 
-                    // node->size += size;
+                    
                     node->file_count++;
                     total_size += size;
                     files_scanned++;
 
-                    // 🔥 ADD THIS BLOCK (DO NOT REMOVE ANYTHING ABOVE)
+                    
                     Node *file_node = new Node;
                     file_node->name = std::string(name.begin(), name.end());
                     file_node->path = std::string(full.begin(), full.end());
@@ -220,7 +220,7 @@ void worker()
                         std::lock_guard<std::mutex> lock(queue_mutex);
                         node->children.push_back(file_node);
                     }
-                    // 🔥 END ADD
+                    
 
                     if (files_scanned % 1000 == 0)
                     {
@@ -232,7 +232,7 @@ void worker()
                         std::cout << "PROGRESS:" << percent << std::endl;
                     }
 
-                    /* track large files */
+                    
                     {
                         std::lock_guard<std::mutex> lock(largest_mutex);
 
@@ -258,7 +258,7 @@ void worker()
     }
 }
 
-/* ---------- TREE ---------- */
+
 
 void sort_tree(Node *node)
 {
@@ -285,7 +285,7 @@ uint64_t compute_sizes(Node *node)
     return total;
 }
 
-/* ---------- SCAN ---------- */
+
 
 Node scan_directory_parallel(const std::string &root_path)
 {
@@ -324,7 +324,7 @@ Node scan_directory_parallel(const std::string &root_path)
     return root;
 }
 
-/* ---------- JSON ---------- */
+
 std::string escape_json(const std::string &s)
 {
     std::ostringstream o;
@@ -349,12 +349,12 @@ std::string escape_json(const std::string &s)
             break;
         case '\f':
             o << "\\f";
-            break; // form feed
+            break; 
         case '\b':
             o << "\\b";
-            break; // backspace
+            break; 
         default:
-            if (c < 0x20) // any other control character
+            if (c < 0x20) 
             {
                 o << "\\u00" << std::hex << std::setw(2) << std::setfill('0') << (int)c;
             }
